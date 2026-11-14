@@ -1,0 +1,35 @@
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant P as proxy.ts
+    participant R as Article page (RSC)
+    participant C as Remote cache
+    participant A as News API
+
+    B->>P: GET /articles/[slug] (cookies)
+    alt valid signed proof cookie
+        P->>R: pass through (no API call)
+    else subscription token only
+        P->>A: GET /subscription
+        alt active
+            A-->>P: active
+            P->>R: pass through, set fresh 10-min proof
+        else inactive, unknown or expired
+            A-->>P: inactive / 404
+            P->>R: strip cookies (paywall), clear them in the browser
+        else API unreachable
+            P->>R: fail open, no proof issued
+        end
+    else no cookies
+        P->>R: pass through as a visitor
+    end
+    R-->>B: prerendered shell (header, title, cover image)
+    R->>C: article, trending ("use cache: remote")
+    alt cache hit
+        C-->>R: cached data
+    else miss or stale
+        C->>A: fetch, validate with zod
+        A-->>C: data
+        C-->>R: data
+    end
+    R-->>B: stream full body for subscribers, or paywall + first paragraph
