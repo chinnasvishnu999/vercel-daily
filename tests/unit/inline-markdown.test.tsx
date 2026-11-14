@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { renderInline, stripInline } from "@/lib/inline-markdown";
 
-const html = (text: string) => renderToStaticMarkup(<>{renderInline(text)}</>);
+const html = (text: string) => renderToStaticMarkup(renderInline(text));
 
 describe("renderInline", () => {
   it("renders links, bold, italic and code as elements", () => {
