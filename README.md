@@ -84,6 +84,85 @@ tests/
 
 ## Architecture
 
+### Overview
+
+```mermaid
+flowchart LR
+    Browser(["Browser"])
+
+    subgraph Vercel["Vercel"]
+        direction LR
+        Edge["Edge network<br/>static PPR shells"]
+        Proxy["proxy.ts<br/>/articles/:slug access check"]
+        subgraph App["Next.js 16 App Router"]
+            direction TB
+            Pages["Server Components<br/>/ · /articles/[slug] · /search"]
+            Client["Client Components<br/>SearchForm · SubscriptionToggle"]
+            Actions["Server Actions<br/>subscribe · unsubscribe"]
+            Data["lib/api/articles.ts<br/>'use cache: remote'"]
+            ApiClient["lib/api/client.ts<br/>server-only · zod validation"]
+        end
+        Cache[("Shared remote cache<br/>hours · days · minutes")]
+    end
+
+    API[["Vercel Daily News API<br/>articles · categories · breaking<br/>trending · subscriptions"]]
+
+    Browser -->|"request"| Edge
+    Edge -->|"static shell, instantly"| Browser
+    Edge -->|"/articles/*"| Proxy
+    Proxy -->|"verify or issue signed proof"| Pages
+    Edge -->|"/ and /search"| Pages
+    Pages -->|"streamed Suspense holes"| Browser
+    Client -->|"URL updates"| Pages
+    Client -->|"form posts"| Actions
+    Pages --> Data
+    Data <--> Cache
+    Data --> ApiClient
+    Actions --> ApiClient
+    Proxy -->|"no valid proof: check token"| API
+    ApiClient -->|"x-vercel-protection-bypass"| API
+```
+
+### Reading an article
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant P as proxy.ts
+    participant R as Article page (RSC)
+    participant C as Remote cache
+    participant A as News API
+
+    B->>P: GET /articles/[slug] (cookies)
+    alt valid signed proof cookie
+        P->>R: pass through (no API call)
+    else subscription token only
+        P->>A: GET /subscription
+        alt active
+            A-->>P: active
+            P->>R: pass through, set fresh 10-min proof
+        else inactive, unknown or expired
+            A-->>P: inactive / 404
+            P->>R: strip cookies (paywall), clear them in the browser
+        else API unreachable
+            P->>R: fail open, no proof issued
+        end
+    else no cookies
+        P->>R: pass through as a visitor
+    end
+    R-->>B: prerendered shell (header, title, cover image)
+    R->>C: article, trending ("use cache: remote")
+    alt cache hit
+        C-->>R: cached data
+    else miss or stale
+        C->>A: fetch, validate with zod
+        A-->>C: data
+        C-->>R: data
+    end
+    R-->>B: stream full body for subscribers, or paywall + first paragraph
+```
+
 ### Rendering and caching (Cache Components)
 
 `cacheComponents: true` is enabled, so every route is **partially prerendered**: a static shell is served instantly from the edge, and only per-visitor parts (subscription status, the paywall decision, search results) stream in behind `<Suspense>`.
