@@ -1,7 +1,21 @@
 import { ARTICLE_SLUG, expect, test, waitForHydration } from "./fixtures";
 
-const paywall = (page: import("@playwright/test").Page) =>
+type Page = import("@playwright/test").Page;
+
+const paywall = (page: Page) =>
   page.getByRole("heading", { name: "Subscribe to keep reading" });
+
+/**
+ * Wait until the page's last streamed section has rendered, so we leave it
+ * settled, like a reader would. Not `networkidle`: the Next.js router can
+ * leave a prefetch response unread, which keeps the network "busy" forever.
+ */
+const articleSettled = (page: Page) =>
+  expect(
+    page.locator('[aria-labelledby="trending-heading"] article'),
+  ).toHaveCount(4);
+const homeSettled = (page: Page) =>
+  expect(page.getByRole("region", { name: "Breaking news" })).toBeVisible();
 
 test("subscribe, persist across reload, unsubscribe", async ({
   page,
@@ -27,13 +41,13 @@ test("subscribe, persist across reload, unsubscribe", async ({
   expect(cookie?.expires).toBe(-1); // session cookie
 
   // Full article survives a reload (after the page settles, like a reader)
-  await page.waitForLoadState("networkidle");
+  await articleSettled(page);
   await page.reload();
   await expect(paywall(page)).toBeHidden();
   await expect(page.getByRole("banner")).toContainText("Subscribed");
 
   // ...and navigating away and back
-  await page.waitForLoadState("networkidle");
+  await articleSettled(page);
   await page.goto("/");
   await expect(page.getByRole("banner")).toContainText("Subscribed");
   await expect(
@@ -55,7 +69,7 @@ test("subscribe, persist across reload, unsubscribe", async ({
     (await context.cookies()).some((c) => c.name === "vd_subscription"),
   ).toBe(false);
 
-  await page.waitForLoadState("networkidle");
+  await homeSettled(page);
   await page.goto(`/articles/${ARTICLE_SLUG}`);
   await expect(paywall(page)).toBeVisible();
 });

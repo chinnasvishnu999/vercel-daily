@@ -10,18 +10,25 @@ export const ARTICLE_SLUG =
  *   because the page navigated away mid-flight. WebKit reports cancelled
  *   fetches as "due to access control checks"; Chromium and Firefox cancel
  *   the same requests silently. No response is involved, so it is not an
- *   application error.
+ *   application error. WebKit reports it either as a console message or,
+ *   when a full page navigation interrupts it, as a page error, so the rule
+ *   applies to both.
  */
+const cancelledPrefetch = /\?_rsc=\S+ due to access control checks/;
+
 export const test = base.extend<{ consoleErrors: string[] }>({
   consoleErrors: [
     async ({ page }, use) => {
       const errors: string[] = [];
-      page.on("pageerror", (error) => errors.push(error.message));
+      page.on("pageerror", (error) => {
+        if (cancelledPrefetch.test(error.message)) return;
+        errors.push(error.message);
+      });
       page.on("console", (message) => {
         if (message.type() !== "error") return;
         const text = message.text();
         if (/status of 404/.test(text)) return;
-        if (/\?_rsc=\S+ due to access control checks/.test(text)) return;
+        if (cancelledPrefetch.test(text)) return;
         errors.push(text);
       });
       await use(errors);
