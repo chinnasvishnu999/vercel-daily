@@ -10,7 +10,8 @@
     "check-types": "next typegen && tsc --noEmit",
     "format": "biome format --write",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "diagrams": "node scripts/render-diagrams.mjs"
   },
   "dependencies": {
     "next": "16.4.6",

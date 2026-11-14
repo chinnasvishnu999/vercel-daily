@@ -86,82 +86,23 @@ tests/
 
 ### Overview
 
-```mermaid
-flowchart LR
-    Browser(["Browser"])
-
-    subgraph Vercel["Vercel"]
-        direction LR
-        Edge["Edge network<br/>static PPR shells"]
-        Proxy["proxy.ts<br/>/articles/:slug access check"]
-        subgraph App["Next.js 16 App Router"]
-            direction TB
-            Pages["Server Components<br/>/ · /articles/[slug] · /search"]
-            Client["Client Components<br/>SearchForm · SubscriptionToggle"]
-            Actions["Server Actions<br/>subscribe · unsubscribe"]
-            Data["lib/api/articles.ts<br/>'use cache: remote'"]
-            ApiClient["lib/api/client.ts<br/>server-only · zod validation"]
-        end
-        Cache[("Shared remote cache<br/>hours · days · minutes")]
-    end
-
-    API[["Vercel Daily News API<br/>articles · categories · breaking<br/>trending · subscriptions"]]
-
-    Browser -->|"request"| Edge
-    Edge -->|"static shell, instantly"| Browser
-    Edge -->|"/articles/*"| Proxy
-    Proxy -->|"verify or issue signed proof"| Pages
-    Edge -->|"/ and /search"| Pages
-    Pages -->|"streamed Suspense holes"| Browser
-    Client -->|"URL updates"| Pages
-    Client -->|"form posts"| Actions
-    Pages --> Data
-    Data <--> Cache
-    Data --> ApiClient
-    Actions --> ApiClient
-    Proxy -->|"no valid proof: check token"| API
-    ApiClient -->|"x-vercel-protection-bypass"| API
-```
+<a href="docs/architecture/overview-light.svg" title="Open full size">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/architecture/overview-dark.svg">
+    <img src="docs/architecture/overview-light.svg" alt="Architecture overview: the browser hits Vercel's edge, which serves static shells and routes article requests through proxy.ts; Server Components read cached data through lib/api, which calls the Vercel Daily News API">
+  </picture>
+</a>
 
 ### Reading an article
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant B as Browser
-    participant P as proxy.ts
-    participant R as Article page (RSC)
-    participant C as Remote cache
-    participant A as News API
+<a href="docs/architecture/article-request-light.svg" title="Open full size">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/architecture/article-request-dark.svg">
+    <img src="docs/architecture/article-request-light.svg" alt="Sequence of an article request: proxy.ts checks the signed proof or the subscription token, the shell streams first, then cached article data, and finally the full body or the paywall">
+  </picture>
+</a>
 
-    B->>P: GET /articles/[slug] (cookies)
-    alt valid signed proof cookie
-        P->>R: pass through (no API call)
-    else subscription token only
-        P->>A: GET /subscription
-        alt active
-            A-->>P: active
-            P->>R: pass through, set fresh 10-min proof
-        else inactive, unknown or expired
-            A-->>P: inactive / 404
-            P->>R: strip cookies (paywall), clear them in the browser
-        else API unreachable
-            P->>R: fail open, no proof issued
-        end
-    else no cookies
-        P->>R: pass through as a visitor
-    end
-    R-->>B: prerendered shell (header, title, cover image)
-    R->>C: article, trending ("use cache: remote")
-    alt cache hit
-        C-->>R: cached data
-    else miss or stale
-        C->>A: fetch, validate with zod
-        A-->>C: data
-        C-->>R: data
-    end
-    R-->>B: stream full body for subscribers, or paywall + first paragraph
-```
+Click a diagram to open it full size. Sources live in [docs/architecture](docs/architecture) (Mermaid); regenerate the images with `pnpm diagrams`.
 
 ### Rendering and caching (Cache Components)
 
