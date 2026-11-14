@@ -91,4 +91,18 @@ All 18 articles are prerendered with `generateStaticParams`. Their header and co
 
 - Article URLs use the slug (`/articles/[slug]`). The API accepts ids or slugs, and slugs are readable and stable.
 - The header's subscription indicator trusts the cookie. Only article routes, where access actually matters, pay for an API check in the proxy.
-- Unknown slugs render the 404 page. With Partial Prefetching on, the very first request for an unlisted slug is served the app shell (status 200, with `noindex`), and later requests return a real 404. This is standard Cache Components behaviour for unlisted params.
+- Unknown slugs render the 404 page. With Partial Prefetching on, the very first request for an unlisted slug is served the app shell (status 200, with `noindex`), and later requests return a real 404. This is standard Cache Components behaviour for unlisted params. In that case the shared header and footer are rendered by the client from the RSC payload, so they appear once JavaScript runs; unknown top-level URLs return a fully server-rendered 404.
+
+## Testing
+
+Verified against both a local production build (`pnpm build && pnpm start`) and the deployed site:
+
+- **HTTP audit (51 checks):** layout and metadata on every page, the home page content, article header and image, trending (3–4 articles, current one excluded, random per request), and search (defaults, results capped at 5, server-side filtering, empty state, URL state). For the paywall it checks:
+  - no full body in the HTML **or** the RSC payload for non-subscribers;
+  - forged, inactive and revoked tokens all stay locked;
+  - subscribers get the full article.
+- **Browser checks (17):** no horizontal scrolling and no console errors on every page at 320, 390, 768, 1024 and 1440 px in light and dark mode; client-side navigation; the search loading state; and keyboard access (skip link).
+- **End-to-end flows (16):**
+  - Subscribing from the paywall and from the header, with pending states. The cookie is checked as `httpOnly`, `secure`, `sameSite=lax` and session-only.
+  - Persistence across refreshes, and unsubscribing.
+  - Search: the 3-character minimum, the debounce (one request per typing burst), the category filter, Enter, clearing, and the back button.
