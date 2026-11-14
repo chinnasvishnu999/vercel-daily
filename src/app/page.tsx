@@ -1,69 +1,151 @@
+import type { Metadata } from "next";
 import Image from "next/image";
+import Link from "next/link";
+import { Suspense } from "react";
+import { ArticleCard, ArticleGrid } from "@/components/article-card";
+import {
+  BreakingNewsBanner,
+  BreakingNewsSkeleton,
+} from "@/components/breaking-news-banner";
+import { SubscribeCta } from "@/components/subscribe-cta";
+import { getArticles, getRecentArticles } from "@/lib/api/articles";
+import type { ArticleSummary } from "@/lib/api/schemas";
+import { formatDate, humanizeSlug } from "@/lib/format";
+import { site } from "@/lib/site";
 
-export default function Home() {
+export const metadata: Metadata = {
+  title: { absolute: `${site.name}: News from the Vercel ecosystem` },
+  description: site.description,
+  alternates: { canonical: "/" },
+  openGraph: {
+    title: site.name,
+    description: site.description,
+    url: "/",
+  },
+};
+
+const FEATURED_COUNT = 6;
+
+/**
+ * Lead story for the hero plus at least 6 featured articles for the grid.
+ * The hero story is excluded from the grid so nothing appears twice; recent
+ * articles fill any gap.
+ */
+async function getHomeContent() {
+  const [recent, featured] = await Promise.all([
+    getRecentArticles(12),
+    getArticles({ featured: true, limit: 12 }),
+  ]);
+  const lead = recent[0];
+  const grid: ArticleSummary[] = [];
+  for (const article of [...featured, ...recent]) {
+    if (grid.length === FEATURED_COUNT) break;
+    if (article.id === lead?.id || grid.some((a) => a.id === article.id)) {
+      continue;
+    }
+    grid.push(article);
+  }
+  return { lead, grid };
+}
+
+export default async function HomePage() {
+  const { lead, grid } = await getHomeContent();
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <>
+      <Suspense fallback={<BreakingNewsSkeleton />}>
+        <BreakingNewsBanner />
+      </Suspense>
+
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        {/* Hero */}
+        <section className="grid items-center gap-8 py-10 sm:py-14 lg:grid-cols-2 lg:gap-12">
+          <div className="flex flex-col gap-5">
+            <p className="font-medium text-accent text-sm uppercase tracking-wider">
+              The Vercel Daily
+            </p>
+            <h1 className="text-balance font-bold text-4xl tracking-tight sm:text-5xl">
+              News and insights from the teams shipping the web
+            </h1>
+            <p className="max-w-xl text-lg text-muted">
+              Product updates, engineering deep dives and customer stories from
+              across the Vercel ecosystem, curated every day.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {lead && (
+                <Link
+                  href={`/articles/${lead.slug}`}
+                  className="inline-flex h-11 items-center rounded-full bg-foreground px-6 font-medium text-background transition-opacity hover:opacity-90"
+                >
+                  Read the lead story
+                </Link>
+              )}
+              <Link
+                href="/search"
+                className="inline-flex h-11 items-center rounded-full border border-border px-6 font-medium transition-colors hover:bg-surface"
+              >
+                Browse articles
+              </Link>
+            </div>
+          </div>
+
+          {lead && (
+            <Link
+              href={`/articles/${lead.slug}`}
+              className="group overflow-hidden rounded-2xl border border-border"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+              <div className="relative aspect-[16/9] bg-surface">
+                <Image
+                  src={lead.image}
+                  alt=""
+                  fill
+                  preload
+                  sizes="(min-width: 1152px) 552px, (min-width: 1024px) 48vw, 100vw"
+                  className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                />
+              </div>
+              <div className="flex flex-col gap-1 p-4">
+                <p className="text-muted text-xs">
+                  <span className="font-medium text-accent uppercase tracking-wide">
+                    {humanizeSlug(lead.category)}
+                  </span>{" "}
+                  · {formatDate(lead.publishedAt)}
+                </p>
+                <p className="font-semibold text-lg leading-snug group-hover:underline">
+                  {lead.title}
+                </p>
+              </div>
+            </Link>
+          )}
+        </section>
+
+        {/* Featured articles */}
+        <section aria-labelledby="featured-heading" className="py-6">
+          <div className="mb-6 flex items-end justify-between gap-4">
+            <h2
+              id="featured-heading"
+              className="font-bold text-2xl tracking-tight"
             >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+              Featured
+            </h2>
+            <Link
+              href="/search"
+              className="text-muted text-sm hover:text-foreground"
+            >
+              View all →
+            </Link>
+          </div>
+          <ArticleGrid>
+            {grid.map((article) => (
+              <ArticleCard key={article.id} article={article} />
+            ))}
+          </ArticleGrid>
+        </section>
+
+        <Suspense fallback={null}>
+          <SubscribeCta />
+        </Suspense>
+      </div>
+    </>
   );
 }
