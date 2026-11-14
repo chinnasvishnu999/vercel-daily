@@ -1,108 +1,174 @@
 # Vercel Daily
 
+[![CI](https://github.com/chinnasvishnu999/vercel-daily/actions/workflows/ci.yml/badge.svg)](https://github.com/chinnasvishnu999/vercel-daily/actions/workflows/ci.yml)
+![Next.js 16](https://img.shields.io/badge/Next.js-16-black?logo=next.js)
+![React 19](https://img.shields.io/badge/React-19-149eca?logo=react)
+![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript)
+
+**Live demo: [vercel-daily-tau.vercel.app](https://vercel-daily-tau.vercel.app)**
+
 A news publication built with **Next.js 16** (App Router, Cache Components) for the Vercel Partner Certification. It has a home page with a breaking-news banner and featured stories, article pages with trending stories and a subscriber paywall, and server-side search whose state lives in the URL. Content comes from the Vercel Daily News API.
+
+<p>
+  <img src="docs/screenshot-home.png" alt="Vercel Daily home page with breaking news, hero and featured articles" width="72%">
+  <img src="docs/screenshot-paywall-mobile.png" alt="Article paywall on a phone in dark mode" width="24%">
+</p>
+
+## Highlights
+
+- **Instant pages over a slow API.** The API takes 1–3 s per call. With partial prerendering and a shared remote cache, warm pages fully load in under 10 ms, and no visitor ever waits on the API for cached content.
+- **Server-side paywall with no leakage.** Non-subscribers never receive the article body, not in the HTML and not in the RSC payload. `proxy.ts` verifies subscriptions and rejects forged, expired or revoked tokens.
+- **Search that behaves like a product.** Debounced, with a 3-character minimum, Enter to submit, a category filter, loading and empty states, and the URL as the single source of truth.
+- **Tested everywhere.** Unit tests, plus Playwright end-to-end tests on desktop Chrome, Firefox and Safari and on mobile Chrome and Safari, run in CI.
+- **Quality bar.** TypeScript strict mode (with `noUncheckedIndexedAccess`), zod-validated API data, WCAG AA contrast, Lighthouse 100 for accessibility, best practices and SEO, zero layout shift, and security headers.
 
 ## Getting started
 
 ```bash
 pnpm install
-cp .env.example .env.local   # then fill in the API bypass token
+cp .env.example .env.local   # then fill in the values below
 pnpm dev                     # http://localhost:3000
 ```
 
 | Variable | Purpose |
 | --- | --- |
 | `VERCEL_DAILY_API_URL` | API base URL (defaults to `https://vercel-daily-news-api.vercel.app/api`) |
-| `VERCEL_DAILY_API_BYPASS_TOKEN` | Deployment Protection bypass token, sent as `x-vercel-protection-bypass`. **Server-only**: never prefixed with `NEXT_PUBLIC_`, never committed. |
+| `VERCEL_DAILY_API_BYPASS_TOKEN` | Deployment Protection bypass token, sent as `x-vercel-protection-bypass`. **Server-only.** |
+| `SUBSCRIPTION_PROOF_SECRET` | 32+ character secret that signs the short-lived subscription proof cookie (`openssl rand -base64 48`). **Server-only.** |
 
-Scripts: `pnpm lint` (Biome), `pnpm check-types` (route types + `tsc`), `pnpm build`, `pnpm start`.
+None of these are prefixed with `NEXT_PUBLIC_`, none are committed, and none ever reach the browser.
+
+| Script | What it does |
+| --- | --- |
+| `pnpm dev` / `pnpm build` / `pnpm start` | Develop, build, serve the production build |
+| `pnpm lint` | Biome (lint + format check) |
+| `pnpm check-types` | Generate route types, then `tsc --noEmit` |
+| `pnpm test` | Unit tests (Vitest) |
+| `pnpm test:e2e` | End-to-end tests (Playwright, 5 browser profiles). `PLAYWRIGHT_BASE_URL=https://… pnpm test:e2e` targets a deployment |
 
 ## Routes
 
 | Route | What it shows |
 | --- | --- |
 | `/` | Breaking-news banner, hero with the latest story, 6 featured articles, subscribe CTA |
-| `/articles/[slug]` | Article header, cover image, full body **or** paywall, trending articles |
+| `/articles/[slug]` | Article header, cover image, full body **or** paywall, 4 trending articles |
 | `/search` | Keyword search + category filter, debounced, persisted in `?q=&category=` |
 
-All pages share the root layout (header with navigation and subscription status, footer with the copyright year). The site also has `not-found`, `error`, a generated Open Graph image, `sitemap.xml` and `robots.txt`.
+All pages share the root layout: a header with navigation and the subscription status, and a footer with the copyright year. The site also has `not-found`, `error` and `global-error` pages, a generated Open Graph image, `sitemap.xml` and `robots.txt`.
+
+## Project structure
+
+```
+src/
+├── app/
+│   ├── layout.tsx               # Root layout + default metadata
+│   ├── page.tsx                 # Home
+│   ├── articles/[slug]/page.tsx # Article (generateStaticParams + generateMetadata)
+│   ├── search/page.tsx          # Search (reads searchParams inside <Suspense>)
+│   ├── actions/subscription.ts  # Server Actions: subscribe / unsubscribe
+│   ├── not-found.tsx, error.tsx, global-error.tsx
+│   └── opengraph-image.tsx, sitemap.ts, robots.ts, icon.svg
+├── components/                  # Server Components by default; client ones are marked
+├── lib/
+│   ├── api/client.ts            # The only way to call the API (server-only, typed errors)
+│   ├── api/schemas.ts           # zod schemas = runtime validation + types
+│   ├── api/articles.ts          # Cached data access ("use cache: remote")
+│   ├── subscription.ts          # Subscription API + cookie settings
+│   ├── subscription-proof.ts    # HMAC-signed proof (Web Crypto)
+│   └── inline-markdown.tsx      # Safe inline Markdown → React
+└── proxy.ts                     # Access control for /articles/*
+tests/
+├── unit/                        # Vitest
+└── e2e/                         # Playwright
+```
 
 ## Architecture
 
 ### Rendering and caching (Cache Components)
 
-`cacheComponents: true` is enabled, so every route is **partially prerendered**: a static shell is served instantly and only request-specific parts stream in behind `<Suspense>`.
+`cacheComponents: true` is enabled, so every route is **partially prerendered**: a static shell is served instantly from the edge, and only per-visitor parts (subscription status, the paywall decision, search results) stream in behind `<Suspense>`.
+
+The upstream API is slow (1–3 s per call, measured), so the rule is: **no visitor waits on it for content that can be cached.** All data access uses `"use cache: remote"`, a cache shared across server instances. That matters for request-time renders, where an instance-local in-memory cache would often miss on serverless.
 
 | Data | Strategy | Why |
 | --- | --- | --- |
-| Articles, article detail | `"use cache"` + `cacheLife("hours")` + `cacheTag("articles")` | Editorial content changes rarely; tags allow targeted revalidation |
-| Categories | `"use cache"` + `cacheLife("days")` | Practically static |
-| Breaking news | Not cached, streamed in `<Suspense>` | The API picks a random item per request, and the spec asks for a dynamic banner |
-| Trending | Not cached, streamed in `<Suspense>` | The API returns a random selection per request, by design |
+| Articles, article detail | `cacheLife("hours")` + `cacheTag("articles")` | Editorial content changes rarely; tags allow targeted revalidation |
+| Categories | `cacheLife("days")` | Practically static |
+| Breaking news | `cacheLife("minutes")`, inside `<Suspense>` | The API returns a random item per call. It rotates every minute via stale-while-revalidate, so the banner stays dynamic without making anyone wait |
+| Trending | `cacheLife("minutes")` per article, inside `<Suspense>` | Random per call; refreshed every minute in the background, always excluding the current article |
+| Search results | `cacheLife("hours")` per query + category | First search for a term pays the API cost once; repeats are instant for everyone |
 | Subscription status | Request time (`cookies()`), inside `<Suspense>` | Personal to each visitor; never cached |
 | Copyright year | `"use cache"` component | Reading the clock isn't allowed while prerendering the shell |
 
-All 18 articles are prerendered with `generateStaticParams`. Their header and cover image are part of the static shell, and only the access-controlled body and the trending list are dynamic.
+All 18 articles are prerendered with `generateStaticParams`. I also measured a shorter, request-time profile for the rotating content: it blocked a request on every refresh, so the `minutes` profile was chosen deliberately.
 
-### Subscription and paywall
+### Subscription, paywall and access control
 
-- **Model:** the API identifies an anonymous subscription by a token. `subscribe` (a Server Action) creates or reuses a token, activates it through the API, and only then stores it in an **httpOnly, secure, `sameSite=lax` session cookie**. `unsubscribe` deactivates it and deletes the cookie. So a present cookie means an active subscriber, and the state survives refreshes for the browser session, as the spec asks.
-- **Read-your-own-writes:** both actions call `refresh()`, so the header, the paywall and the CTAs update in the same round trip, without a manual reload.
-- **Access control in `proxy.ts`:** before an article renders, the proxy verifies the cookie's token with the API. If the token is unknown, expired (24 h of inactivity) or inactive, the proxy strips the cookie from the request and clears it in the browser, so a stale or forged cookie can't unlock content. If the API itself is unreachable, it fails open for an existing subscriber rather than flashing a paywall; a definite "not found" or "inactive" always fails closed.
-- **No content leakage:** the paywall decision happens on the server, in `ArticleAccess`. That component looks the article up by slug (a cache hit) instead of receiving it as a prop, so for a non-subscriber the response contains only the headline, image and first paragraph. The full body is never sent and then hidden with CSS.
-- **Progressive enhancement:** the subscribe and unsubscribe forms post to Server Actions, so they work before JavaScript loads. With JavaScript, `useActionState` adds pending and error states.
+- **Model:** the API identifies an anonymous subscription by a token. The `subscribe` Server Action activates the visitor's token (or creates one if it's unknown or expired) and only then stores it in an **httpOnly, secure, `sameSite=lax` session cookie**, so it lasts for the browser session as specified. `unsubscribe` deactivates the token and deletes the cookies.
+- **Read-your-own-writes:** both actions call `refresh()`, so the header, the paywall and the CTAs update in the same round trip.
+- **Access control in `proxy.ts`:** before an article renders, the proxy checks the subscription:
+  - **Signed proof:** after one successful API check it issues an HMAC-SHA256 **signed proof** cookie, valid for 10 minutes. The proof is bound to the token and its expiry, verified in constant time, and can't be forged, extended or reused for another token. Later requests are verified locally instead of costing a 1.5 s API call.
+  - **Invalid token:** if the token is unknown, expired (24 h of inactivity) or inactive, the cookies are stripped from the request (so the page renders the paywall) and cleared in the browser.
+  - **API outage:** the proxy fails open for an existing subscriber, without issuing a proof, rather than flashing a paywall. A definite "not found" or "inactive" always fails closed.
+- **No content leakage:** the paywall decision happens on the server in `ArticleAccess`, which looks the article up by slug instead of receiving it as a prop. For a non-subscriber the response contains only the headline, image and first paragraph.
+- **Progressive enhancement:** the forms post to Server Actions, so they work before JavaScript loads. With JavaScript, `useActionState` adds pending and error states.
 
 ### Search
 
-- The URL is the source of truth: the server reads `searchParams`, validates them (the category must exist, the query is trimmed and length-limited) and filters through the API (`limit=5`), so a refresh or a shared link shows the same results.
-- Client behaviour (`SearchForm`):
-  - Typing searches automatically after **3+ characters**, with a **300 ms debounce** that resets on each keystroke.
-  - **Enter** or the **Search** button searches immediately.
+- **URL as source of truth:** the server reads `searchParams`, validates them (the category must exist, the query is trimmed and length-limited) and filters through the API (`limit=5`). A refresh or a shared link shows the same results.
+- **`SearchForm` (client):**
+  - **Typing** searches automatically after 3+ characters, with a 300 ms debounce that resets on every keystroke.
+  - **Enter** or the button searches immediately.
   - **Clearing** the input removes the stale query from the URL right away.
-  - **Changing the category** applies immediately.
-- **Loading feedback:** navigation runs inside `useTransition`. While results load, the previous results stay visible (dimmed) with a spinner, and screen readers get a live "Searching…" message.
-- **Back/forward:** handled through `popstate`, so the form's own in-flight navigations can never overwrite what the user is typing.
-- **States:** default (latest articles when there is no search), results (up to 5), and an empty-results message.
+  - **The category filter** applies immediately.
+  - **Back/forward** is synced through `popstate`, so in-flight navigations never overwrite typing.
+- **Loading feedback:** `useTransition` keeps the previous results visible (dimmed) with a spinner and a live "Searching…" message for screen readers.
 
 ### Data layer
 
 - `src/lib/api/client.ts` is the single, `server-only` entry point to the API. It adds the bypass header, unwraps the `{ success, data, error }` envelope and throws a typed `ApiError`.
-- Every response is validated with **zod** schemas (`src/lib/api/schemas.ts`), so the UI only ever handles trusted, typed data. This caught real API quirks:
-  - Some titles have leading whitespace, which is trimmed.
-  - In-article image blocks currently have an empty `src`, so they're skipped instead of rendering broken images.
-  - Single-item responses have no `meta`.
-- Article text contains inline Markdown (links, bold, italic, code). `src/lib/inline-markdown.tsx` renders it as React elements without `dangerouslySetInnerHTML`, and only for `http(s)` links. Card excerpts and meta descriptions use a plain-text version.
+- Every response is validated with **zod**, so the UI only handles trusted, typed data. Validation surfaced real API quirks:
+  - Some titles have leading whitespace (trimmed).
+  - In-article image blocks have an empty `src` (skipped instead of rendering broken images).
+  - Single-item responses omit `meta`.
+- Article text contains inline Markdown. `inline-markdown.tsx` renders links, bold, italic and code as React elements (never `dangerouslySetInnerHTML`) and only links `http(s)` URLs, so `javascript:` URLs can't get through.
+
+### Security
+
+- All secrets are server-only (`server-only` imports, no `NEXT_PUBLIC_`). Client bundles were checked to contain none of them.
+- Security headers on every route: `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`. `X-Powered-By` is disabled, and Vercel adds HSTS.
+- Subscription cookies are `httpOnly`, `secure` and `sameSite=lax`, and the proof cookie is signed and short-lived.
+- URL input is validated before it reaches the API.
 
 ### Metadata and SEO
 
-- **Root layout:** `metadataBase`, a title template (`%s | Vercel Daily`), a default description, and default `openGraph` and `twitter` metadata.
+- **Root layout:** `metadataBase`, a title template (`%s | Vercel Daily`), and default description, Open Graph and Twitter metadata.
 - **Every page** exports its own metadata. Articles use `generateMetadata` with `og:type=article`, the publish time, author, section, tags and the cover image.
-- A generated default social image (`opengraph-image.tsx`), plus `sitemap.xml`, `robots.txt` and canonical URLs.
+- A generated default social image, `sitemap.xml`, `robots.txt` and canonical URLs.
 
 ### Performance and accessibility
 
-- **Images:** `next/image` with `remotePatterns` scoped to the API's Blob store and AVIF/WebP output. The LCP image is preloaded, and fixed aspect-ratio frames give zero layout shift. The source images are up to 5186 px wide and 1.2 MB, and are served resized.
-- **Fonts:** Geist via `next/font`.
-- **Theming:** semantic color tokens for light and dark mode, all at WCAG AA contrast or better.
-- **Accessibility:** a skip link, landmarks, `aria-current` navigation, labelled form controls, live regions for async states, and visible focus styles.
+- **Images:** `next/image` with `remotePatterns` scoped to the API's Blob store and AVIF/WebP output. The LCP image is preloaded, and fixed aspect-ratio frames give zero layout shift. Source images are up to 5186 px wide and 1.2 MB.
+- **Fonts and theming:** Geist via `next/font`; semantic color tokens for light and dark mode, all at WCAG AA contrast or better.
+- **Accessibility:** a skip link, landmarks, `aria-current` navigation, labelled controls, live regions for async states, and visible focus styles.
 - **Lighthouse** (mobile, production build): performance 96–97, accessibility 100, best practices 100, SEO 100, CLS 0.
-
-## Trade-offs and notes
-
-- Article URLs use the slug (`/articles/[slug]`). The API accepts ids or slugs, and slugs are readable and stable.
-- The header's subscription indicator trusts the cookie. Only article routes, where access actually matters, pay for an API check in the proxy.
-- Unknown slugs render the 404 page. With Partial Prefetching on, the very first request for an unlisted slug is served the app shell (status 200, with `noindex`), and later requests return a real 404. This is standard Cache Components behaviour for unlisted params. In that case the shared header and footer are rendered by the client from the RSC payload, so they appear once JavaScript runs; unknown top-level URLs return a fully server-rendered 404.
 
 ## Testing
 
-Verified against both a local production build (`pnpm build && pnpm start`) and the deployed site:
+| Suite | Tool | Covers |
+| --- | --- | --- |
+| Unit (16 tests) | Vitest | Signed proof (round-trip, tampering, expiry, token binding, missing secret), safe inline Markdown (XSS and `javascript:` links), UTC date formatting, API schema validation |
+| End-to-end (13 tests × 5 browsers) | Playwright | Layout, metadata and responsive layout on every page; home, article and trending content; the full subscribe → reload → unsubscribe flow; forged cookies; the 404 page; search debounce, URL state, category filter, Enter, empty state and clearing. Any console error fails the test |
 
-- **HTTP audit (51 checks):** layout and metadata on every page, the home page content, article header and image, trending (3–4 articles, current one excluded, random per request), and search (defaults, results capped at 5, server-side filtering, empty state, URL state). For the paywall it checks:
-  - no full body in the HTML **or** the RSC payload for non-subscribers;
-  - forged, inactive and revoked tokens all stay locked;
-  - subscribers get the full article.
-- **Browser checks (17):** no horizontal scrolling and no console errors on every page at 320, 390, 768, 1024 and 1440 px in light and dark mode; client-side navigation; the search loading state; and keyboard access (skip link).
-- **End-to-end flows (16):**
-  - Subscribing from the paywall and from the header, with pending states. The cookie is checked as `httpOnly`, `secure`, `sameSite=lax` and session-only.
-  - Persistence across refreshes, and unsubscribing.
-  - Search: the 3-character minimum, the debounce (one request per typing burst), the category filter, Enter, clearing, and the back button.
+The Playwright projects are Desktop Chrome, Desktop Firefox, Desktop Safari (WebKit), Mobile Chrome (Pixel 7) and Mobile Safari (iPhone 15).
+
+**CI** (GitHub Actions, on every push and PR, plus a daily scheduled run):
+- Lint, type check and unit tests.
+- The full Playwright suite in all 5 browsers against the production deployment.
+
+## Trade-offs and notes
+
+- **Slugs in URLs:** articles use `/articles/[slug]`. The API accepts ids or slugs, and slugs are readable and stable.
+- **Header status:** the header's subscription indicator trusts the cookie. Only article routes, where access matters, go through the proxy's verification.
+- **Revocation delay:** a subscription revoked outside this site is detected when the 10-minute proof expires. Unsubscribing on this site takes effect immediately.
+- **Unknown slugs:** they render the 404 page. With Partial Prefetching, the first request for an unlisted slug is served the app shell (status 200, `noindex`), and later requests return a real 404. In that case the header and footer render on the client.

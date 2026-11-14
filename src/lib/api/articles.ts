@@ -13,9 +13,22 @@ import {
   CategorySchema,
 } from "@/lib/api/schemas";
 
-// Data access for public content. Editorial content changes rarely, so it is
-// cached with "use cache" and tagged for targeted revalidation. Trending and
-// breaking news are intentionally NOT cached: the API randomises them per request.
+/*
+ * Data access for the Vercel Daily News API.
+ *
+ * The API is slow (1-3s per call), so nothing a visitor waits on should hit
+ * it directly. Every function uses "use cache: remote": a cache shared by all
+ * server instances, which also works for request-time renders (search
+ * results, the paywalled body, the streamed banner and trending list), where
+ * an instance-local in-memory cache would often miss on serverless.
+ *
+ * - Editorial content: long lifetimes + tags for targeted revalidation.
+ * - Breaking news and trending: the API picks them at random per request.
+ *   They use the "minutes" profile: refreshed every minute in the background
+ *   (stale-while-revalidate), so they keep rotating while no visitor ever
+ *   waits on the slow API. A shorter, request-time profile was measured to
+ *   block a request on every refresh, which is the lag we want to avoid.
+ */
 
 /** Drop the article body from list views so it never reaches list UIs. */
 function toSummary({ content: _content, ...summary }: Article): ArticleSummary {
@@ -35,7 +48,7 @@ export async function getArticles({
   featured,
   limit = 20,
 }: ArticleQuery = {}): Promise<ArticleSummary[]> {
-  "use cache";
+  "use cache: remote";
   cacheLife("hours");
   cacheTag("articles");
 
@@ -60,7 +73,7 @@ export async function getRecentArticles(limit: number) {
 }
 
 export async function getArticle(slug: string): Promise<Article | null> {
-  "use cache";
+  "use cache: remote";
   cacheLife("hours");
   cacheTag("articles", `article:${slug}`);
 
@@ -77,7 +90,7 @@ export async function getArticle(slug: string): Promise<Article | null> {
 }
 
 export async function getCategories(): Promise<Category[]> {
-  "use cache";
+  "use cache: remote";
   cacheLife("days");
   cacheTag("categories");
 
@@ -85,12 +98,12 @@ export async function getCategories(): Promise<Category[]> {
   return data;
 }
 
-/**
- * Latest breaking news, fetched per request (uncached on purpose): the API
- * returns a randomly selected item on each call, and the spec asks for a
- * dynamic banner. The home page streams it in behind <Suspense>.
- */
+/** Latest breaking news (rotates: the API returns a random item per call). */
 export async function getBreakingNews(): Promise<BreakingNews | null> {
+  "use cache: remote";
+  cacheLife("minutes");
+  cacheTag("breaking-news");
+
   try {
     const { data } = await apiRequest("/breaking-news", BreakingNewsSchema);
     return data;
@@ -100,10 +113,14 @@ export async function getBreakingNews(): Promise<BreakingNews | null> {
   }
 }
 
-/** Random trending articles, fetched per request (uncached on purpose). */
+/** Trending articles (random per call), excluding the one being read. */
 export async function getTrendingArticles(
   excludeId?: string,
 ): Promise<ArticleSummary[]> {
+  "use cache: remote";
+  cacheLife("minutes");
+  cacheTag("trending");
+
   const params = excludeId ? `?exclude=${encodeURIComponent(excludeId)}` : "";
   const { data } = await apiRequest(
     `/articles/trending${params}`,

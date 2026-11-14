@@ -1,8 +1,8 @@
 import "server-only";
 
 import { cookies } from "next/headers";
-import { ApiError, apiRequest } from "@/lib/api/client";
-import { type Subscription, SubscriptionSchema } from "@/lib/api/schemas";
+import { apiRequest } from "@/lib/api/client";
+import { SubscriptionSchema } from "@/lib/api/schemas";
 
 /**
  * Subscription model
@@ -11,8 +11,9 @@ import { type Subscription, SubscriptionSchema } from "@/lib/api/schemas";
  *   Actions after the API confirmed the subscription is active, and removed
  *   on unsubscribe. So "cookie present" means "active subscriber".
  * - proxy.ts re-validates the token with the API before article pages render
- *   and clears it if it expired or was revoked (tokens expire after 24h of
- *   inactivity), so a stale or forged cookie never unlocks content.
+ *   (cached for a few minutes as a signed proof, see subscription-proof.ts)
+ *   and clears it if it expired or was revoked, so a stale or forged cookie
+ *   never unlocks content.
  */
 export const SUBSCRIPTION_COOKIE = "vd_subscription";
 
@@ -61,19 +62,4 @@ export async function deactivateSubscription(token: string) {
     headers: tokenHeader(token),
   });
   return data;
-}
-
-/** Current status for a token, or null when the token is unknown/expired. */
-export async function getSubscription(
-  token: string,
-): Promise<Subscription | null> {
-  try {
-    const { data } = await apiRequest("/subscription", SubscriptionSchema, {
-      headers: tokenHeader(token),
-    });
-    return data;
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 404) return null;
-    throw error;
-  }
 }
