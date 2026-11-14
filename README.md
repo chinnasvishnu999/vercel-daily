@@ -16,11 +16,11 @@ A news publication built with **Next.js 16** (App Router, Cache Components) for 
 
 ## Highlights
 
-- **Instant pages over a slow API.** The API takes 1–3 s per call. With partial prerendering and a shared remote cache, warm pages fully load in under 10 ms, and no visitor ever waits on the API for cached content.
+- **Fast pages over a slow API.** The API takes 1–3 s per call. With partial prerendering and a shared remote cache, live pages fully load in about 0.3 s (down from 2–3 s), and no visitor waits on the API for cached content.
 - **Server-side paywall with no leakage.** Non-subscribers never receive the article body, not in the HTML and not in the RSC payload. `proxy.ts` verifies subscriptions and rejects forged, expired or revoked tokens.
 - **Search that behaves like a product.** Debounced, with a 3-character minimum, Enter to submit, a category filter, loading and empty states, and the URL as the single source of truth.
 - **Tested everywhere.** Unit tests, plus Playwright end-to-end tests on desktop Chrome, Firefox and Safari and on mobile Chrome and Safari, run in CI.
-- **Quality bar.** TypeScript strict mode (with `noUncheckedIndexedAccess`), zod-validated API data, WCAG AA contrast, Lighthouse 100 for accessibility, best practices and SEO, zero layout shift, and security headers.
+- **Quality bar.** Lighthouse 100/100/100/100 on desktop and 99/100/100/100 on mobile, zero layout shift, TypeScript strict mode (with `noUncheckedIndexedAccess`), zod-validated API data, WCAG AA contrast, and security headers.
 
 ## Getting started
 
@@ -151,7 +151,7 @@ All 18 articles are prerendered with `generateStaticParams`. I also measured a s
 - **Images:** `next/image` with `remotePatterns` scoped to the API's Blob store and AVIF/WebP output. The LCP image is preloaded, and fixed aspect-ratio frames give zero layout shift. Source images are up to 5186 px wide and 1.2 MB.
 - **Fonts and theming:** Geist via `next/font`; semantic color tokens for light and dark mode, all at WCAG AA contrast or better.
 - **Accessibility:** a skip link, landmarks, `aria-current` navigation, labelled controls, live regions for async states, and visible focus styles.
-- **Lighthouse** (mobile, production build): performance 96–97, accessibility 100, best practices 100, SEO 100, CLS 0.
+- **Lighthouse** (live deployment, home / article / search): desktop 100 for performance, accessibility, best practices and SEO; mobile 99 / 100 / 100 / 100. CLS 0 on every page.
 
 ## Testing
 

@@ -4,8 +4,13 @@ export const ARTICLE_SLUG =
   "vercel-domains-overhauled-with-instant-search-and-at-cost-pricing";
 
 /**
- * Every test fails if the page logs a console error or throws. The only
- * allowed error is the browser's own log line for an intentional 404.
+ * Every test fails if the page logs a console error or throws. Allowed:
+ * - the browser's own log line for an intentional 404;
+ * - WebKit's message for a router prefetch (`?_rsc=`) that was cancelled
+ *   because the page navigated away mid-flight. WebKit reports cancelled
+ *   fetches as "due to access control checks"; Chromium and Firefox cancel
+ *   the same requests silently. No response is involved, so it is not an
+ *   application error.
  */
 export const test = base.extend<{ consoleErrors: string[] }>({
   consoleErrors: [
@@ -14,8 +19,10 @@ export const test = base.extend<{ consoleErrors: string[] }>({
       page.on("pageerror", (error) => errors.push(error.message));
       page.on("console", (message) => {
         if (message.type() !== "error") return;
-        if (/status of 404/.test(message.text())) return;
-        errors.push(message.text());
+        const text = message.text();
+        if (/status of 404/.test(text)) return;
+        if (/\?_rsc=\S+ due to access control checks/.test(text)) return;
+        errors.push(text);
       });
       await use(errors);
       expect(errors, "console errors").toEqual([]);

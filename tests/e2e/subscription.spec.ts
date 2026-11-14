@@ -26,12 +26,14 @@ test("subscribe, persist across reload, unsubscribe", async ({
   expect(cookie?.sameSite).toBe("Lax");
   expect(cookie?.expires).toBe(-1); // session cookie
 
-  // Full article survives a reload
+  // Full article survives a reload (after the page settles, like a reader)
+  await page.waitForLoadState("networkidle");
   await page.reload();
   await expect(paywall(page)).toBeHidden();
   await expect(page.getByRole("banner")).toContainText("Subscribed");
 
   // ...and navigating away and back
+  await page.waitForLoadState("networkidle");
   await page.goto("/");
   await expect(page.getByRole("banner")).toContainText("Subscribed");
   await expect(
@@ -53,6 +55,7 @@ test("subscribe, persist across reload, unsubscribe", async ({
     (await context.cookies()).some((c) => c.name === "vd_subscription"),
   ).toBe(false);
 
+  await page.waitForLoadState("networkidle");
   await page.goto(`/articles/${ARTICLE_SLUG}`);
   await expect(paywall(page)).toBeVisible();
 });
