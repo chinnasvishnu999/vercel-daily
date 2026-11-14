@@ -20,6 +20,16 @@ export const metadata: Metadata = {
     title: "Search | Vercel Daily",
     description: "Search Vercel Daily articles by keyword and category.",
     url: "/search",
+    // A page-level openGraph object replaces the inherited one, so the
+    // default social image has to be listed again here.
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "Vercel Daily",
+      },
+    ],
   },
 };
 

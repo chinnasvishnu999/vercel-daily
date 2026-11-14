@@ -37,7 +37,7 @@ All pages share the root layout (header with navigation and subscription status,
 | --- | --- | --- |
 | Articles, article detail | `"use cache"` + `cacheLife("hours")` + `cacheTag("articles")` | Editorial content changes rarely; tags allow targeted revalidation |
 | Categories | `"use cache"` + `cacheLife("days")` | Practically static |
-| Breaking news | `"use cache"` + `cacheLife("minutes")` | Must stay fresh, but doesn't need a request per visitor |
+| Breaking news | Not cached, streamed in `<Suspense>` | The API picks a random item per request, and the spec asks for a dynamic banner |
 | Trending | Not cached, streamed in `<Suspense>` | The API returns a random selection per request, by design |
 | Subscription status | Request time (`cookies()`), inside `<Suspense>` | Personal to each visitor; never cached |
 | Copyright year | `"use cache"` component | Reading the clock isn't allowed while prerendering the shell |

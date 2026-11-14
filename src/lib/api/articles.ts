@@ -14,8 +14,8 @@ import {
 } from "@/lib/api/schemas";
 
 // Data access for public content. Editorial content changes rarely, so it is
-// cached with "use cache" and tagged for targeted revalidation. Trending is
-// intentionally NOT cached: it is random on every request by design.
+// cached with "use cache" and tagged for targeted revalidation. Trending and
+// breaking news are intentionally NOT cached: the API randomises them per request.
 
 /** Drop the article body from list views so it never reaches list UIs. */
 function toSummary({ content: _content, ...summary }: Article): ArticleSummary {
@@ -85,12 +85,12 @@ export async function getCategories(): Promise<Category[]> {
   return data;
 }
 
+/**
+ * Latest breaking news, fetched per request (uncached on purpose): the API
+ * returns a randomly selected item on each call, and the spec asks for a
+ * dynamic banner. The home page streams it in behind <Suspense>.
+ */
 export async function getBreakingNews(): Promise<BreakingNews | null> {
-  "use cache";
-  // Breaking news should stay fresh: refresh in the background every minute.
-  cacheLife("minutes");
-  cacheTag("breaking-news");
-
   try {
     const { data } = await apiRequest("/breaking-news", BreakingNewsSchema);
     return data;
