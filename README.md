@@ -1,9 +1,9 @@
 # Vercel Daily
 
 [![CI](https://github.com/chinnasvishnu999/vercel-daily/actions/workflows/ci.yml/badge.svg)](https://github.com/chinnasvishnu999/vercel-daily/actions/workflows/ci.yml)
-![Next.js 16](https://img.shields.io/badge/Next.js-16-black?logo=next.js)
-![React 19](https://img.shields.io/badge/React-19-149eca?logo=react)
-![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript)
+[![Next.js 16](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org/blog/next-16)
+[![React 19](https://img.shields.io/badge/React-19-149eca?logo=react)](https://react.dev/blog/2024/12/05/react-19)
+[![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript)](tsconfig.json)
 
 **Live demo: [vercel-daily-tau.vercel.app](https://vercel-daily-tau.vercel.app)**
 
